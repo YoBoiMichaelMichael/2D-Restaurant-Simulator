@@ -1,0 +1,1754 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>2D Restaurant Simulator</title>
+<style>
+  /* ============================= GLOBAL / RESET ============================= */
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: radial-gradient(ellipse at top, #3a2d55, #1a1330 70%);
+    font-family: 'Trebuchet MS', 'Segoe UI', sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  #gameWrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  /* ============================== TOP BAR (restaurant name) ============================== */
+  #topBar {
+    width: min(1024px, 96vw);
+    display:flex; align-items:center; justify-content:space-between;
+    color:#f5ecff;
+    font-size: 15px;
+    padding: 0 4px;
+  }
+  #signLine { font-size:17px; font-weight:bold; letter-spacing:0.5px; color:#ffe9b8; }
+  #phaseBadge {
+    background:#4a2c0b; border:2px solid #ffd76a; border-radius:10px;
+    padding:3px 10px; font-weight:bold; font-size:13px; color:#ffe9b8;
+  }
+
+  /* ================================ HUD ================================ */
+  #hud {
+    width: min(1024px, 96vw);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: linear-gradient(180deg,#ffd76a,#ffb703);
+    border: 4px solid #7a4b12;
+    border-radius: 20px;
+    padding: 10px 20px;
+    box-shadow: 0 6px 0 #7a4b12, 0 14px 24px rgba(0,0,0,0.45);
+    color: #1a1a1a;
+    font-weight: bold;
+  }
+  #hud .hudGroup { display:flex; align-items:center; gap:12px; font-size:16px; flex-wrap: wrap; }
+  #hud .stat {
+    background:#fff8e6;
+    border:3px solid #7a4b12;
+    border-radius:12px;
+    padding:5px 12px;
+    box-shadow: inset 0 -2px 0 rgba(0,0,0,0.1);
+    white-space:nowrap;
+    color:#1a1a1a;
+    transition: transform 0.15s ease;
+  }
+  #hud .stat.pulse { animation: statPulse 0.35s ease; }
+  @keyframes statPulse { 0%{transform:scale(1);} 40%{transform:scale(1.14);} 100%{transform:scale(1);} }
+  #hud button {
+    font-family: inherit;
+    font-weight:bold;
+    font-size:15px;
+    padding:9px 16px;
+    border-radius:12px;
+    border:3px solid #7a4b12;
+    color:#1a1a1a;
+    cursor:pointer;
+    box-shadow: 0 4px 0 #7a4b12;
+    transition: transform 0.08s ease, box-shadow 0.08s ease, filter 0.15s ease;
+  }
+  #hud button:hover { filter: brightness(1.08); }
+  #hud button:active { transform: translateY(3px); box-shadow:0 1px 0 #7a4b12; }
+  #startDayBtn { background:#8ee36f; color:#12300a; }
+
+  /* =============================== CANVAS =============================== */
+  #canvasWrap {
+    width: min(1024px, 96vw);
+    aspect-ratio: 1024 / 768;
+    border: 7px solid #4a2c0b;
+    border-radius: 20px;
+    box-shadow: 0 16px 36px rgba(0,0,0,0.55), inset 0 0 0 2px rgba(255,255,255,0.06);
+    overflow: hidden;
+    background:#111;
+  }
+  #gameCanvas { width: 100%; height: 100%; display: block; }
+
+  #controlsHint {
+    width: min(1024px, 96vw);
+    text-align:center;
+    color:#e6d9ff;
+    font-size:13px;
+    opacity:0.85;
+  }
+
+  /* ================================ TOASTS ================================ */
+  #toastContainer {
+    position:fixed;
+    bottom: 26px;
+    left:50%;
+    transform:translateX(-50%);
+    display:flex;
+    flex-direction:column-reverse;
+    gap:6px;
+    pointer-events:none;
+    z-index: 50;
+  }
+  .toast {
+    background: rgba(20,15,35,0.92);
+    color:#fff;
+    padding:9px 18px;
+    border-radius: 20px;
+    border: 2px solid rgba(255,255,255,0.25);
+    font-size:14px;
+    font-weight:bold;
+    animation: toastIn 0.25s ease, toastOut 0.4s ease 2.1s forwards;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+  }
+  @keyframes toastIn { from{opacity:0; transform:translateY(10px);} to{opacity:1; transform:translateY(0);} }
+  @keyframes toastOut { to{opacity:0; transform:translateY(-14px);} }
+
+  /* ================================ MODALS ================================ */
+  .modalOverlay {
+    position:fixed; inset:0;
+    background: rgba(10,5,20,0.65);
+    display:flex; align-items:center; justify-content:center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+  }
+  .modalOverlay.show { opacity: 1; pointer-events: auto; }
+
+  .modalCard {
+    background: linear-gradient(180deg,#fff9ee,#ffedc4);
+    border:5px solid #7a4b12;
+    border-radius:24px;
+    padding:24px 28px;
+    width:440px;
+    max-width:90vw;
+    max-height: 84vh;
+    overflow-y: auto;
+    box-shadow: 0 14px 0 rgba(0,0,0,0.25);
+    color:#1a1a1a;
+    transform: scale(0.88) translateY(14px);
+    transition: transform 0.25s cubic-bezier(.34,1.56,.64,1);
+  }
+  .modalOverlay.show .modalCard { transform: scale(1) translateY(0); }
+
+  .modalCard h2 {
+    margin:0 0 14px 0;
+    text-align:center;
+    font-size:25px;
+    letter-spacing:1px;
+    color:#a5460f;
+  }
+  .modalCard p { text-align:center; margin: 0 0 16px 0; font-size:14px; color:#3a3a3a; }
+  .closeBtn {
+    display:block;
+    margin: 18px auto 0 auto;
+    background:#ff6b6b;
+    color:#fff;
+    border:3px solid #8c1c1c;
+    border-radius:12px;
+    padding:9px 24px;
+    font-weight:bold;
+    font-size:15px;
+    cursor:pointer;
+    box-shadow: 0 4px 0 #8c1c1c;
+    transition: transform 0.08s ease;
+  }
+  .closeBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #8c1c1c; }
+
+  .hubBtn {
+    display:block; width:100%;
+    margin-bottom:12px;
+    background:#6fc3ff; color:#0b3a5c;
+    border:3px solid #0b3a5c;
+    border-radius:14px;
+    padding:14px;
+    font-weight:bold;
+    font-size:16px;
+    cursor:pointer;
+    box-shadow: 0 4px 0 #0b3a5c;
+    transition: transform 0.08s ease;
+  }
+  .hubBtn:active { transform:translateY(3px); box-shadow:0 1px 0 #0b3a5c; }
+  .hubBtn.resume { background:#8ee36f; color:#1e4a10; border-color:#1e4a10; box-shadow:0 4px 0 #1e4a10; }
+
+  /* --- price rows --- */
+  .priceRow {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#fff;
+    border:3px solid #e0b98a;
+    border-radius:14px;
+    padding:10px 14px;
+    margin-bottom:10px;
+  }
+  .priceRow .foodName { font-size:16px; font-weight:bold; display:flex; align-items:center; gap:8px; color:#1a1a1a;}
+  .priceRow .priceControls { display:flex; align-items:center; gap:8px; }
+  .priceRow button {
+    width:30px; height:30px;
+    border-radius:50%;
+    border:2px solid #7a4b12;
+    background:#ffd76a;
+    color:#1a1a1a;
+    font-weight:bold;
+    font-size:16px;
+    cursor:pointer;
+    transition: transform 0.08s ease;
+  }
+  .priceRow button:active { transform: scale(0.88); }
+  .priceRow .priceValue {
+    min-width:52px;
+    text-align:center;
+    font-size:16px;
+    font-weight:bold;
+    color:#1a1a1a;
+    background:#f5f5f5;
+    border-radius:8px;
+    padding:4px 0;
+  }
+  .priceHint { font-size:12px; color:#8a6a3f; margin-top:-4px; margin-bottom:12px; text-align:center;}
+
+  /* --- shop items --- */
+  .shopItem {
+    display:flex; align-items:center; justify-content:space-between;
+    background:#fff;
+    border:3px solid #cfe8ff;
+    border-radius:14px;
+    padding:10px 14px;
+    margin-bottom:8px;
+    gap: 10px;
+  }
+  .shopItem .info { display:flex; flex-direction:column; }
+  .shopItem .info .name { font-weight:bold; font-size:14px; color:#1a1a1a; }
+  .shopItem .info .desc { font-size:11.5px; color:#5a5a5a; }
+  .shopItem button {
+    padding:8px 14px;
+    border-radius:10px;
+    border:3px solid #0b3a5c;
+    background:#6fc3ff;
+    color:#0b3a5c;
+    font-weight:bold;
+    cursor:pointer;
+    box-shadow: 0 3px 0 #0b3a5c;
+    white-space:nowrap;
+    transition: transform 0.08s ease;
+    flex-shrink:0;
+  }
+  .shopItem button:disabled {
+    background:#c9c9c9; color:#777; border-color:#888;
+    box-shadow: 0 3px 0 #888;
+    cursor:not-allowed;
+  }
+  .shopItem button:active:not(:disabled){ transform:translateY(3px); box-shadow:0 0 0 transparent; }
+
+  #walletLine {
+    text-align:center;
+    font-size:15px;
+    margin-bottom:14px;
+    color:#1a1a1a;
+    background:#fff3d6;
+    border-radius:10px;
+    padding:7px;
+    border:2px dashed #cf9b3f;
+  }
+
+  /* --- title screen --- */
+  #titleScreen .modalCard { width: 460px; text-align:center; }
+  #restaurantNameInput {
+    width: 100%;
+    font-family: inherit;
+    font-size: 18px;
+    font-weight: bold;
+    text-align: center;
+    padding: 12px;
+    border-radius: 12px;
+    border: 3px solid #7a4b12;
+    margin-bottom: 16px;
+    color: #1a1a1a;
+    background: #fff;
+  }
+  #restaurantNameInput:focus { outline: 3px solid #ffb703; }
+</style>
+</head>
+<body>
+
+<div id="gameWrap">
+
+  <div id="topBar">
+    <div id="signLine">🏪 <span id="nameDisplay">My Restaurant</span></div>
+    <div id="phaseBadge">Preparing...</div>
+  </div>
+
+  <!-- ============================= HUD BAR ============================= -->
+  <div id="hud">
+    <div class="hudGroup">
+      <div class="stat" id="moneyBox">💰 $<span id="moneyStat">0</span></div>
+      <div class="stat">📅 Day <span id="dayStat">1</span> — <span id="timeStat">10:00 AM</span></div>
+      <div class="stat" id="repBox">⭐ Rep: <span id="repStat">0</span></div>
+    </div>
+    <div class="hudGroup">
+      <button id="startDayBtn">▶ Start Day</button>
+    </div>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="gameCanvas" width="1024" height="768"></canvas>
+  </div>
+
+  <div id="controlsHint">
+    WASD / Arrow Keys — Move &nbsp;|&nbsp; E or Spacebar — Interact (order / cook / pick up / serve / bill / trash / office PC)
+  </div>
+</div>
+
+<div id="toastContainer"></div>
+
+<!-- ============================= TITLE SCREEN ============================= -->
+<div id="titleScreen" class="modalOverlay">
+  <div class="modalCard">
+    <h2>🍔 Welcome, Restaurateur!</h2>
+    <p>Every great restaurant starts with a great name.<br>What will you call yours?</p>
+    <input id="restaurantNameInput" type="text" maxlength="24" placeholder="e.g. Pixel Bites">
+    <button id="startGameBtn" class="closeBtn" style="background:#8ee36f;border-color:#1e4a10;box-shadow:0 4px 0 #1e4a10;">Open for Business!</button>
+  </div>
+</div>
+
+<!-- ============================= PC / MANAGEMENT HUB MODAL ============================= -->
+<div id="pcModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>🖥️ Manager's Office</h2>
+    <p>Time is frozen while you're managing. Take your time!</p>
+    <button class="hubBtn" id="hubPricesBtn">📋 Set Menu Prices</button>
+    <button class="hubBtn" id="hubShopBtn">🛒 Upgrade Shop</button>
+    <button class="hubBtn resume" id="hubResumeBtn">▶ Resume Business</button>
+  </div>
+</div>
+
+<!-- ============================= PRICE MENU MODAL ============================= -->
+<div id="menuModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>📋 Set Menu Prices</h2>
+    <div class="priceHint">Base: Burger $10 / Fries $6. Price too high &amp; customers may balk!</div>
+    <div id="priceRows"></div>
+    <button class="closeBtn" id="closeMenuBtn">Back to Office</button>
+  </div>
+</div>
+
+<!-- ============================= UPGRADE SHOP MODAL ============================= -->
+<div id="shopModal" class="modalOverlay">
+  <div class="modalCard">
+    <h2>🛒 Upgrade Shop</h2>
+    <div id="walletLine">Wallet: $<span id="shopMoney">0</span></div>
+    <div id="shopItems"></div>
+    <button class="closeBtn" id="closeShopBtn">Back to Office</button>
+  </div>
+</div>
+
+<script>
+/* =====================================================================================
+   2D RESTAURANT SIMULATOR  —  v4 (UI Legibility Fix, Aligned Office, Detailed Stove, Slower Pacing)
+   Single-file HTML5 Canvas game. Sections:
+     1.  Setup & Constants
+     2.  Utility helpers (shapes, math, color, text-stroke)
+     3.  World Data (walls, rooms, furniture, decorations, office, trash)
+     4.  Game State (money, day/time, reputation, prices, upgrades, phase)
+     5.  Player (movement physics, collision, holding multiple items)
+     6.  Customers (spawning, AI state machine, pathing)
+     7.  Interaction logic (ordering / cooking / serving / billing / trash / PC)
+     8.  Update loop
+     9.  Render / Draw functions
+     10. Floating text ("juice") system
+     11. UI (HUD, Modals, Toasts, Title Screen, Management Hub)
+     12. Input handling & main loop
+
+   NOTE ON TEXT STROKES: strokeFillText() draws canvas text with an optional black
+   outline. It is now used ONLY for text rendered inside the game world (floating
+   text, status icons above characters, in-world labels like "STOVE"/"PC"). All
+   HTML UI (HUD bar, PC menus, modals) uses plain, solid CSS colors - no stroke,
+   no shadow duplication - so it stays crisp and legible.
+   ===================================================================================== */
+
+/* ============================== 1. SETUP & CONSTANTS ============================== */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const CANVAS_W = canvas.width;   // 1024
+const CANVAS_H = canvas.height;  // 768
+
+const BASE_PRICES    = { Burger: 10, Fries: 6 };
+const FOOD_ICONS     = { Burger: '🍔', Fries: '🍟' };
+const BASE_COOK_TIME = 5000;    // ms to cook one order (before upgrades)
+const INTERACT_RANGE = 50;      // px
+
+// Patience is VERY generous now - players should be free to manage the office at leisure.
+const PATIENCE_ORDER = 55000;   // waiting in line / at table to place an order
+const PATIENCE_FOOD  = 65000;   // waiting for the kitchen after the order is placed
+const PATIENCE_BILL  = 48000;   // waiting for the player to collect payment after eating
+const EAT_TIME        = 6500;   // time spent eating once served (not patience-limited)
+
+// Player movement physics (px/second based, frame-rate independent)
+const BASE_MAX_SPEED = 190;     // px/sec
+const ACCEL          = 1500;    // px/sec^2 while a direction is held
+const BASE_DECEL     = 1900;    // px/sec^2 when no input (friction)
+
+/* ============================== 2. UTILITY HELPERS ============================== */
+function roundRect(c, x, y, w, h, r) {
+  if (typeof r === 'number') r = { tl: r, tr: r, br: r, bl: r };
+  c.beginPath();
+  c.moveTo(x + r.tl, y);
+  c.lineTo(x + w - r.tr, y);
+  c.arcTo(x + w, y, x + w, y + r.tr, r.tr);
+  c.lineTo(x + w, y + h - r.br);
+  c.arcTo(x + w, y + h, x + w - r.br, y + h, r.br);
+  c.lineTo(x + r.bl, y + h);
+  c.arcTo(x, y + h, x, y + h - r.bl, r.bl);
+  c.lineTo(x, y + r.tl);
+  c.arcTo(x, y, x + r.tl, y, r.tl);
+  c.closePath();
+}
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+function dist(x1, y1, x2, y2) { return Math.hypot(x2 - x1, y2 - y1); }
+function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+function approach(current, target, rate) {
+  if (current < target) return Math.min(current + rate, target);
+  if (current > target) return Math.max(current - rate, target);
+  return current;
+}
+// Smooth green -> yellow -> red hue interpolation for progress/patience bars
+function pctColor(pct) {
+  const hue = clamp(pct, 0, 1) * 120; // 120 = green, 0 = red
+  return `hsl(${hue}, 78%, 48%)`;
+}
+// In-world canvas text with a black outline so it reads on any moving background.
+// This is used ONLY for text drawn on the <canvas> (floating text, in-world labels,
+// status icons) - never for the HTML HUD/menus, which use plain CSS colors instead.
+function strokeFillText(text, x, y, fillColor, font, align, strokeWidth) {
+  ctx.font = font || 'bold 13px Trebuchet MS';
+  ctx.textAlign = align || 'center';
+  if (strokeWidth !== 0) {
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = strokeWidth || 4;
+    ctx.strokeStyle = '#000000';
+    ctx.strokeText(text, x, y);
+  }
+  ctx.fillStyle = fillColor;
+  ctx.fillText(text, x, y);
+}
+
+/* ============================== 3. WORLD DATA ============================== */
+// --- Outer boundary + the wall dividing the (larger) outdoor zone from the restaurant ---
+const walls = [
+  { x: 0,    y: 0,   w: 1024, h: 12 },   // top
+  { x: 0,    y: 756, w: 1024, h: 12 },   // bottom
+  { x: 0,    y: 0,   w: 12,   h: 768 },  // left
+  { x: 1012, y: 0,   w: 12,   h: 768 },  // right
+
+  { x: 380,  y: 0,   w: 25,   h: 300 },  // outdoor/restaurant divider - upper segment
+  { x: 380,  y: 470, w: 25,   h: 298 },  // outdoor/restaurant divider - lower segment (door gap 300-470)
+
+  // Dedicated, walled-off kitchen room (bottom-right), with an open archway entrance
+  { x: 686, y: 506, w: 114, h: 14 },     // kitchen top wall - left of archway
+  { x: 900, y: 506, w: 112, h: 14 },     // kitchen top wall - right of archway (archway gap: 800-900)
+  { x: 686, y: 506, w: 14,  h: 262 },    // kitchen left wall (506 -> 768, flush with outer bottom wall)
+
+  // Dedicated, walled-off Manager's Office (below the dining area), open door on top.
+  // All four walls are snapped to the same grid as the kitchen and outer walls so
+  // every seam is flush - no visual gaps or unwalled slivers anywhere in the structure.
+  { x: 392, y: 500, w: 100, h: 14 },     // office top wall - left of door
+  { x: 562, y: 500, w: 124, h: 14 },     // office top wall - right of door (door gap: 492-562), reaches x=686
+  { x: 392, y: 500, w: 14,  h: 256 },    // office left wall (500 -> 756, flush with outer bottom wall)
+  { x: 672, y: 500, w: 14,  h: 256 },    // office right wall (flush against the kitchen's left wall at x=686)
+  { x: 392, y: 742, w: 294, h: 14 },     // office bottom wall (392 -> 686, flush with outer + kitchen walls)
+];
+
+const DOOR_POINT       = { x: 392, y: 384 };
+const KITCHEN_ARCH      = { x: 850, y: 500 };
+const HUB_POINT         = { x: 460, y: 480 };
+const OUTSIDE_DESPAWN   = { x: 16, y: 384 };
+const OFFICE_DOOR       = { x: 527, y: 494 };
+
+// --- Outdoor decorations (tucked against walls/corners so paths stay clear) ---
+const grassPatches = [ // purely visual texture variance, no collision
+  { x: 90, y: 130, rx: 60, ry: 34, c: '#93cf8b' },
+  { x: 300, y: 90,  rx: 50, ry: 28, c: '#93cf8b' },
+  { x: 60, y: 560,  rx: 70, ry: 36, c: '#8fcb86' },
+  { x: 320, y: 620, rx: 60, ry: 32, c: '#8fcb86' },
+  { x: 200, y: 470, rx: 46, ry: 24, c: '#9fd695' },
+  { x: 40,  y: 700, rx: 55, ry: 26, c: '#9fd695' },
+];
+const pavedPath = { x: 0, y: 318, w: 392, h: 132 }; // visual only
+
+const trees = [
+  { cx: 40,  cy: 50,  r: 24, phase: 0.0 },
+  { cx: 352, cy: 50,  r: 24, phase: 1.1 },
+  { cx: 30,  cy: 740, r: 22, phase: 2.4 },
+  { cx: 362, cy: 740, r: 22, phase: 0.6 },
+];
+const treeBoxes = trees.map(t => ({ x: t.cx - t.r * 0.4, y: t.cy - t.r * 0.4, w: t.r * 0.8, h: t.r * 0.8 })); // small trunk-only collision, tucked in corners
+
+const fountain = { cx: 196, cy: 150, r: 34 }; // centered in the upper garden, well clear of the path
+const fountainBox = { x: fountain.cx - fountain.r, y: fountain.cy - fountain.r, w: fountain.r * 2, h: fountain.r * 2 };
+
+const lamps = [
+  { x: 40,  y: 240 },
+  { x: 352, y: 240 },
+];
+const lampBoxes = lamps.map(l => ({ x: l.x - 5, y: l.y + 20, w: 10, h: 10 }));
+
+// Benches pushed to the side walls, clear of the central path (path spans y318-450)
+const outdoorBenches = [
+  { x: 24,  y: 470, w: 60, h: 26 },
+  { x: 308, y: 470, w: 60, h: 26 },
+];
+
+// Potted plants tucked into corners along the outer garden walls, never on the walking path
+const outdoorPlants = [
+  { x: 22,  y: 120 },
+  { x: 370, y: 120 },
+  { x: 196, y: 730 },
+];
+const outdoorPlantBoxes = outdoorPlants.map(p => ({ x: p.x - 10, y: p.y - 10, w: 20, h: 20 }));
+
+// --- Restaurant interior: counter + queue ---
+const counter = { x: 440, y: 40, w: 280, h: 50 };
+const queueSpots = [
+  { x: 470, y: 130, occupied: false, customerId: null },
+  { x: 530, y: 130, occupied: false, customerId: null },
+  { x: 590, y: 130, occupied: false, customerId: null },
+  { x: 650, y: 130, occupied: false, customerId: null },
+  { x: 700, y: 130, occupied: false, customerId: null },
+];
+
+// --- Dining tables: a mix of round and square shapes for visual variety ---
+function makeTable(cx, cy, shape) {
+  const half = 30;
+  return {
+    shape, cx, cy, r: half,
+    rect: { x: cx - half, y: cy - half, w: half * 2, h: half * 2 },
+    chairs: [
+      { x: cx - 50, y: cy, occupied: false, customerId: null },
+      { x: cx + 50, y: cy, occupied: false, customerId: null },
+    ],
+  };
+}
+const tables = [
+  makeTable(490, 210, 'round'),
+  makeTable(650, 210, 'square'),
+  makeTable(810, 210, 'round'),
+  makeTable(490, 380, 'square'),
+  makeTable(650, 380, 'round'),
+  makeTable(810, 380, 'square'),
+];
+
+// Carpeted rug zone under the dining tables (visual flooring accent)
+const carpetRug = { x: 450, y: 160, w: 440, h: 300 };
+
+// Decorative wall paintings along the top wall (visual only)
+const paintings = [
+  { x: 470, y: 16, w: 46, h: 30, c: '#e07a5f' },
+  { x: 640, y: 16, w: 46, h: 30, c: '#3d5a80' },
+  { x: 810, y: 16, w: 46, h: 30, c: '#81b29a' },
+];
+
+// Indoor potted plants - tucked into unused corners, well away from all walk paths
+const indoorPlants = [
+  { x: 402, y: 40 },
+  { x: 1000, y: 40 },
+  { x: 1000, y: 470 },
+];
+const indoorPlantBoxes = indoorPlants.map(p => ({ x: p.x - 12, y: p.y - 12, w: 24, h: 24 }));
+
+// --- Kitchen (dedicated, walled-off room) ---
+const kitchenZone = { x: 700, y: 520, w: 312, h: 236 }; // interior floor bounds (visual + checker pattern)
+const stove       = { x: 730, y: 596, w: 100, h: 70 };
+const prepStation = { x: 870, y: 596, w: 100, h: 70 };
+const trashCan     = { x: 948, y: 690, w: 40, h: 40 }; // tucked in the kitchen's back corner
+
+// --- Manager's Office (dedicated, walled-off room, south of the dining hall) ---
+// Interior bounds recomputed to sit flush inside the new wall positions above.
+const officeZone = { x: 406, y: 514, w: 266, h: 228 }; // interior floor bounds
+const desk = { x: 499, y: 580, w: 80, h: 50 };
+const officeRug = { x: 460, y: 560, w: 180, h: 130 };      // cozy rug under the desk
+const officeCabinet = { x: 412, y: 528, w: 34, h: 60 };     // filing cabinet against the left wall
+const officePlant = { x: 646, y: 718 };                     // decorative plant, tucked in the far corner
+const officePlantBox = { x: officePlant.x - 10, y: officePlant.y - 10, w: 20, h: 20 };
+
+// All obstacles the PLAYER collides with (customers ignore these to keep pathing simple/performant)
+const solidObstacles = [
+  ...walls, counter, stove, prepStation, desk, trashCan, officeCabinet,
+  ...tables.map(t => t.rect),
+  ...treeBoxes, fountainBox, ...lampBoxes, ...outdoorBenches, ...outdoorPlantBoxes,
+  ...indoorPlantBoxes, officePlantBox,
+];
+
+/* ============================== 4. GAME STATE ============================== */
+const state = {
+  money: 20,
+  day: 1,
+  minutes: 600,       // 600 = 10:00 AM
+  reputation: 0,
+  paused: false,       // management/pause mode: customers, cooking & clock frozen; player can still walk
+  phase: 'title',       // 'title' -> 'prep' -> 'active' -> 'prep' -> ...
+  restaurantName: '',
+};
+
+const prices = { Burger: BASE_PRICES.Burger, Fries: BASE_PRICES.Fries };
+
+const upgrades = {
+  sneakers:         { owned:false, cost:50,   name:'Sneakers',          desc:'Slight player speed boost.' },
+  turboShoes:       { owned:false, cost:150,  name:'Turbo Shoes',       desc:'Medium player speed boost.' },
+  sonicBoots:       { owned:false, cost:300,  name:'Sonic Boots',       desc:'Maximum player speed boost.' },
+  copperStove:      { owned:false, cost:100,  name:'Copper Stove',      desc:'15% faster cooking.' },
+  ironStove:        { owned:false, cost:250,  name:'Iron Stove',        desc:'30% faster cooking.' },
+  goldenStove:      { owned:false, cost:500,  name:'Golden Stove',      desc:'50% faster cooking.' },
+  comfyChairs:      { owned:false, cost:75,   name:'Comfy Chairs',      desc:'+10% base customer patience.' },
+  luxuryBooths:     { owned:false, cost:200,  name:'Luxury Booths',     desc:'+25% base customer patience.' },
+  zenFountain:      { owned:false, cost:400,  name:'Zen Fountain',      desc:'Counter customers wait 40% longer.' },
+  fastTrash:        { owned:false, cost:40,   name:'Fast Trash',        desc:'Discard food at the bin with no rep penalty.' },
+  tipJar:           { owned:false, cost:120,  name:'Tip Jar',           desc:'Customers leave a random $1-$3 tip.' },
+  premiumNapkins:   { owned:false, cost:80,   name:'Premium Napkins',   desc:'Slightly increases price tolerance.' },
+  neonSign:         { owned:false, cost:350,  name:'Neon Sign',         desc:'+20% customer spawn rate.' },
+  adCampaign:       { owned:false, cost:600,  name:'Ad Campaign',       desc:'+50% customer spawn rate.' },
+  doublePlatter:    { owned:false, cost:500,  name:'Double Platter',    desc:'Carry two plates at once.' },
+  cheapIngredients: { owned:false, cost:150,  name:'Cheap Ingredients', desc:'+$2 profit on every dish served.' },
+  organicProduce:   { owned:false, cost:450,  name:'Organic Produce',   desc:'Customers tolerate $3 higher prices.' },
+  microwave:        { owned:false, cost:90,   name:'Microwave',        desc:'Cuts Fries cook time in half.' },
+  comfyFloorMats:   { owned:false, cost:110,  name:'Comfy Floor Mats',  desc:'Snappier stops - less sliding around.' },
+  goldenApron:      { owned:false, cost:1000, name:'Golden Apron',      desc:'Doubles all tips & maxes out reputation!' },
+};
+const UPGRADE_ORDER = ['sneakers','turboShoes','sonicBoots','copperStove','ironStove','goldenStove',
+  'comfyChairs','luxuryBooths','zenFountain','fastTrash','tipJar','premiumNapkins','neonSign','adCampaign',
+  'doublePlatter','cheapIngredients','organicProduce','microwave','comfyFloorMats','goldenApron'];
+
+const SAVE_KEY = 'restaurantSimSaveV3';
+function loadSave() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (saved) {
+      if (saved.money != null) state.money = saved.money;
+      if (saved.day != null) state.day = saved.day;
+      if (saved.reputation != null) state.reputation = saved.reputation;
+      if (saved.prices) Object.assign(prices, saved.prices);
+      if (saved.upgrades) Object.keys(upgrades).forEach(k => { if (saved.upgrades[k]) upgrades[k].owned = true; });
+      if (saved.restaurantName) state.restaurantName = saved.restaurantName;
+      return !!saved.restaurantName;
+    }
+  } catch (e) { /* ignore corrupt/missing save */ }
+  return false;
+}
+function saveGame() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      money: state.money, day: state.day, reputation: state.reputation,
+      restaurantName: state.restaurantName,
+      prices, upgrades: Object.fromEntries(Object.entries(upgrades).map(([k, v]) => [k, v.owned])),
+    }));
+  } catch (e) { /* storage unavailable - ignore */ }
+}
+
+/* ---- Upgrade effect helpers (all derived live from `upgrades`, nothing cached/stale) ---- */
+function getSpeedMultiplier() {
+  if (upgrades.sonicBoots.owned) return 1.45;
+  if (upgrades.turboShoes.owned) return 1.25;
+  if (upgrades.sneakers.owned) return 1.10;
+  return 1;
+}
+function getStoveDuration(item) {
+  let reduction = 0;
+  if (upgrades.goldenStove.owned) reduction = 0.5;
+  else if (upgrades.ironStove.owned) reduction = 0.3;
+  else if (upgrades.copperStove.owned) reduction = 0.15;
+  let dur = BASE_COOK_TIME * (1 - reduction);
+  if (item === 'Fries' && upgrades.microwave.owned) dur *= 0.5;
+  return dur;
+}
+function patienceMultiplier(isTable) {
+  let bonus = 0;
+  if (upgrades.comfyChairs.owned) bonus += 0.10;
+  if (upgrades.luxuryBooths.owned) bonus += 0.25;
+  let mult = 1 + bonus;
+  if (!isTable && upgrades.zenFountain.owned) mult *= 1.4;
+  return mult;
+}
+function spawnRateMultiplier() {
+  let m = 1;
+  if (upgrades.neonSign.owned) m += 0.2;
+  if (upgrades.adCampaign.owned) m += 0.5;
+  return m;
+}
+function getDecel() { return upgrades.comfyFloorMats.owned ? BASE_DECEL * 1.6 : BASE_DECEL; }
+function holdCapacity() { return upgrades.doublePlatter.owned ? 2 : 1; }
+
+/* ============================== 5. PLAYER ============================== */
+const player = {
+  x: 460, y: 480,
+  size: 30,
+  vx: 0, vy: 0,
+  maxSpeed: BASE_MAX_SPEED,
+  facing: 'down',
+  holdingItems: [],   // array of { customerId, item }, capacity from holdCapacity()
+  walkPhase: 0,       // drives the walk-bob / squash-stretch animation
+  bounce: 0,          // 0..1 decaying pulse triggered on successful interaction
+};
+
+function applyUpgradeEffects() {
+  player.maxSpeed = BASE_MAX_SPEED * getSpeedMultiplier();
+}
+
+function playerCollisionRect(x, y) {
+  const r = player.size / 2 - 2; // slightly smaller than the drawn sprite so corners feel forgiving
+  return { x: x - r, y: y - r, w: r * 2, h: r * 2 };
+}
+
+function movePlayer(dx, dy) {
+  // Axis-separated AABB resolution - lets the player slide smoothly along walls/furniture
+  if (dx !== 0) {
+    const testRect = playerCollisionRect(player.x + dx, player.y);
+    if (!solidObstacles.some(o => rectsIntersect(testRect, o))) player.x += dx;
+    else player.vx = 0;
+  }
+  if (dy !== 0) {
+    const testRect = playerCollisionRect(player.x, player.y + dy);
+    if (!solidObstacles.some(o => rectsIntersect(testRect, o))) player.y += dy;
+    else player.vy = 0;
+  }
+  player.x = clamp(player.x, 16, CANVAS_W - 16);
+  player.y = clamp(player.y, 16, CANVAS_H - 16);
+}
+
+function updatePlayer(dt) {
+  const dtSec = dt / 1000;
+  let inputX = 0, inputY = 0;
+  if (keys['w'] || keys['arrowup'])    { inputY -= 1; player.facing = 'up'; }
+  if (keys['s'] || keys['arrowdown'])  { inputY += 1; player.facing = 'down'; }
+  if (keys['a'] || keys['arrowleft'])  { inputX -= 1; player.facing = 'left'; }
+  if (keys['d'] || keys['arrowright']) { inputX += 1; player.facing = 'right'; }
+  const moving = inputX !== 0 || inputY !== 0;
+  if (moving) {
+    const len = Math.hypot(inputX, inputY);
+    inputX /= len; inputY /= len;
+  }
+  const targetVx = inputX * player.maxSpeed;
+  const targetVy = inputY * player.maxSpeed;
+  const rate = (moving ? ACCEL : getDecel()) * dtSec;
+  player.vx = approach(player.vx, targetVx, rate);
+  player.vy = approach(player.vy, targetVy, rate);
+
+  movePlayer(player.vx * dtSec, player.vy * dtSec);
+
+  // Walk-bob animation phase advances proportionally to actual speed
+  const speedMag = Math.hypot(player.vx, player.vy);
+  if (speedMag > 5) player.walkPhase += dtSec * 10 * (speedMag / player.maxSpeed);
+  if (player.bounce > 0) player.bounce = Math.max(0, player.bounce - dtSec * 3.2);
+}
+
+/* ============================== 6. CUSTOMERS ============================== */
+let customers = [];
+let nextCustomerId = 1;
+let spawnTimer = 5000;
+
+const CUSTOMER_COLORS = ['#ff8fa3', '#8ecae6', '#ffb703', '#a3e635', '#c77dff', '#ff9770', '#90e0ef', '#f4a261'];
+
+function findFreeQueueSpot() { return queueSpots.find(s => !s.occupied); }
+function findFreeChair() {
+  for (const t of tables) for (const c of t.chairs) if (!c.occupied) return c;
+  return null;
+}
+function buildPath(target) {
+  return [ { x: DOOR_POINT.x, y: DOOR_POINT.y }, { x: HUB_POINT.x, y: HUB_POINT.y }, { x: target.x, y: target.y } ];
+}
+function buildExitPath() {
+  return [ { x: HUB_POINT.x, y: HUB_POINT.y }, { x: DOOR_POINT.x, y: DOOR_POINT.y }, { x: OUTSIDE_DESPAWN.x, y: OUTSIDE_DESPAWN.y } ];
+}
+
+function trySpawnCustomer() {
+  const wantsTable = Math.random() < 0.5;
+  let spot = wantsTable ? findFreeChair() : findFreeQueueSpot();
+  if (!spot) spot = wantsTable ? findFreeQueueSpot() : findFreeChair();
+  if (!spot) return; // restaurant is full - skip this spawn
+
+  spot.occupied = true;
+  const isTable = tables.some(t => t.chairs.includes(spot));
+  const id = nextCustomerId++;
+  spot.customerId = id;
+
+  const item = Math.random() < 0.5 ? 'Burger' : 'Fries';
+  const pMax = PATIENCE_ORDER * patienceMultiplier(isTable);
+  customers.push({
+    id,
+    x: OUTSIDE_DESPAWN.x, y: 100 + Math.random() * 550,
+    color: CUSTOMER_COLORS[Math.floor(Math.random() * CUSTOMER_COLORS.length)],
+    item, isTable, spot,
+    state: 'walkingIn',
+    path: buildPath(spot),
+    patience: pMax, patienceMax: pMax,
+    eatTimer: 0,
+    bobPhase: Math.random() * 10,
+  });
+}
+
+function freeSpotFor(customer) { customer.spot.occupied = false; customer.spot.customerId = null; }
+
+function sendCustomerOut(customer, angry) {
+  customer.state = angry ? 'leavingAngry' : 'leavingHappy';
+  customer.path = buildExitPath();
+  freeSpotFor(customer);
+  pendingOrders = pendingOrders.filter(o => o.customerId !== customer.id);
+}
+
+function moveCustomerAlongPath(c, dt) {
+  if (!c.path || c.path.length === 0) return true;
+  const target = c.path[0];
+  const speed = 100 * (dt / 1000); // px/sec
+  const d = dist(c.x, c.y, target.x, target.y);
+  if (d < 4) { c.path.shift(); return c.path.length === 0; }
+  c.x += (target.x - c.x) / d * speed;
+  c.y += (target.y - c.y) / d * speed;
+  return false;
+}
+
+function updateCustomers(dt) {
+  for (let i = customers.length - 1; i >= 0; i--) {
+    const c = customers[i];
+    c.bobPhase += dt * 0.006;
+
+    switch (c.state) {
+      case 'walkingIn': {
+        if (moveCustomerAlongPath(c, dt)) {
+          c.state = 'waitingToOrder';
+          c.patience = c.patienceMax = PATIENCE_ORDER * patienceMultiplier(c.isTable);
+        }
+        break;
+      }
+      case 'waitingToOrder':
+      case 'waitingForFood':
+      case 'waitingForBill': {
+        c.patience -= dt;
+        if (c.patience <= 0) {
+          sendCustomerOut(c, true);
+          state.reputation -= 1;
+          spawnFloatingText(c.x, c.y - 30, '😠 Left angry!', '#ff5252');
+          showToast(`😠 A customer left angry! (Rep ${state.reputation})`);
+          pulseStat('repBox');
+        }
+        break;
+      }
+      case 'eating': {
+        c.eatTimer -= dt;
+        if (c.eatTimer <= 0) {
+          c.state = 'waitingForBill';
+          c.patience = c.patienceMax = PATIENCE_BILL * patienceMultiplier(c.isTable);
+          spawnFloatingText(c.x, c.y - 30, 'Delicious! 😋', '#4caf50');
+        }
+        break;
+      }
+      case 'leavingHappy':
+      case 'leavingAngry': {
+        if (moveCustomerAlongPath(c, dt)) customers.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  // Slowed-down pacing: longer base gap between spawns, gently tightening with each
+  // passing day, so a fresh restaurant never gets swarmed in the first few minutes.
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    trySpawnCustomer();
+    const minInterval = Math.max(4500, 9500 - state.day * 150) / spawnRateMultiplier();
+    spawnTimer = minInterval + Math.random() * 4000;
+  }
+}
+
+/* ============================== 7. INTERACTION LOGIC ============================== */
+let pendingOrders = [];   // { customerId, item } waiting to be cooked
+let readyFood = [];       // { customerId, item } cooked and sitting on the prep station
+let cooking = { active: false, progress: 0, duration: 0, order: null };
+
+function priceDecision(item) {
+  const price = prices[item];
+  const base = BASE_PRICES[item];
+  let tolerance = 0;
+  if (upgrades.premiumNapkins.owned) tolerance += base * 0.15;
+  if (upgrades.organicProduce.owned) tolerance += 3;
+  const acceptCeil = base * 1.2 + tolerance;
+  const complainCeil = base * 1.8 + tolerance;
+  if (price <= acceptCeil) return 'accept';
+  if (price <= complainCeil) return Math.random() < 0.5 ? 'accept' : 'complain';
+  return 'complain';
+}
+
+function computePayout(item) {
+  let payout = prices[item];
+  if (upgrades.cheapIngredients.owned) payout += 2;
+  let tip = 0;
+  if (upgrades.tipJar.owned) {
+    tip = 1 + Math.floor(Math.random() * 3); // $1-$3
+    if (upgrades.goldenApron.owned) tip *= 2;
+  }
+  return payout + tip;
+}
+
+function attemptTakeOrder(c) {
+  const decision = priceDecision(c.item);
+  if (decision === 'accept') {
+    c.state = 'waitingForFood';
+    c.patience = c.patienceMax = PATIENCE_FOOD * patienceMultiplier(c.isTable);
+    pendingOrders.push({ customerId: c.id, item: c.item });
+    spawnFloatingText(c.x, c.y - 30, `📝 ${c.item}!`, '#ffd76a');
+    showToast(`📝 Order taken: ${FOOD_ICONS[c.item]} ${c.item}`);
+  } else {
+    sendCustomerOut(c, true);
+    state.reputation -= 1;
+    spawnFloatingText(c.x, c.y - 30, 'Too expensive!', '#ff5252');
+    showToast(`💸 "Too expensive!" — customer stormed off.`);
+    pulseStat('repBox');
+  }
+  player.bounce = 1;
+}
+
+function interactStove() {
+  if (cooking.active) { showToast('🔥 Stove is already cooking!'); return; }
+  if (pendingOrders.length === 0) { showToast('🍽️ No orders waiting to be cooked.'); return; }
+  const order = pendingOrders.shift();
+  cooking = { active: true, progress: 0, duration: getStoveDuration(order.item), order };
+  showToast(`👨‍🍳 Cooking ${FOOD_ICONS[order.item]} ${order.item}...`);
+  player.bounce = 1;
+}
+
+function interactPrep() {
+  if (player.holdingItems.length >= holdCapacity()) { showToast('✋ Your hands are full!'); return; }
+  if (readyFood.length === 0) { showToast('🍽️ Nothing ready to pick up.'); return; }
+  const item = readyFood.shift();
+  player.holdingItems.push(item);
+  showToast(`✅ Picked up ${FOOD_ICONS[item.item]} ${item.item}`);
+  player.bounce = 1;
+}
+
+function serveCustomer(c, heldIndex) {
+  player.holdingItems.splice(heldIndex, 1);
+  player.bounce = 1;
+  if (c.isTable) {
+    c.state = 'eating';
+    c.eatTimer = EAT_TIME;
+    spawnFloatingText(c.x, c.y - 30, 'Order up!', '#8ecae6');
+    showToast('🍽️ Food delivered - enjoy your meal!');
+  } else {
+    // Counter customers grab-and-go and pay immediately
+    const payout = computePayout(c.item);
+    state.money += payout;
+    state.reputation += 1;
+    spawnFloatingText(c.x, c.y - 30, `+$${payout}`, '#ffd700');
+    showToast(`💰 Served! +$${payout}`);
+    pulseStat('moneyBox');
+    sendCustomerOut(c, false);
+    saveGame();
+  }
+}
+
+function collectBill(c) {
+  const payout = computePayout(c.item);
+  state.money += payout;
+  state.reputation += 1;
+  spawnFloatingText(c.x, c.y - 30, `+$${payout}`, '#ffd700');
+  showToast(`🧾 Bill collected! +$${payout}`);
+  pulseStat('moneyBox');
+  player.bounce = 1;
+  sendCustomerOut(c, false);
+  saveGame();
+}
+
+function interactTrash() {
+  if (player.holdingItems.length === 0) { showToast('🗑️ Nothing to throw away.'); return; }
+  player.holdingItems.pop();
+  player.bounce = 1;
+  if (upgrades.fastTrash.owned) {
+    showToast('🗑️ Tossed instantly - no harm done!');
+  } else {
+    state.reputation -= 1;
+    showToast('🗑️ Wasted food... (-1 Rep)');
+    pulseStat('repBox');
+  }
+}
+
+function interactPC() {
+  openModal(pcModal);
+  showToast('🖥️ Management mode - the clock has stopped.');
+}
+
+function inRangeOfPoint(x, y) { return dist(player.x, player.y, x, y) < INTERACT_RANGE; }
+
+function nearestInteractable() {
+  if (state.paused) return null; // no world interactions while a management modal is open
+  const candidates = [];
+
+  player.holdingItems.forEach((held, idx) => {
+    const t = customers.find(c => c.id === held.customerId && c.state === 'waitingForFood');
+    if (t && inRangeOfPoint(t.spot.x, t.spot.y)) candidates.push({ type: 'serve', target: t, heldIndex: idx, d: dist(player.x, player.y, t.spot.x, t.spot.y) });
+  });
+
+  const billTarget = customers.find(c => c.state === 'waitingForBill' && inRangeOfPoint(c.spot.x, c.spot.y));
+  if (billTarget) candidates.push({ type: 'bill', target: billTarget, d: dist(player.x, player.y, billTarget.spot.x, billTarget.spot.y) });
+
+  const stoveCenter = { x: stove.x + stove.w / 2, y: stove.y + stove.h / 2 };
+  if (inRangeOfPoint(stoveCenter.x, stoveCenter.y)) candidates.push({ type: 'stove', d: dist(player.x, player.y, stoveCenter.x, stoveCenter.y) });
+
+  const prepCenter = { x: prepStation.x + prepStation.w / 2, y: prepStation.y + prepStation.h / 2 };
+  if (inRangeOfPoint(prepCenter.x, prepCenter.y)) candidates.push({ type: 'prep', d: dist(player.x, player.y, prepCenter.x, prepCenter.y) });
+
+  const trashCenter = { x: trashCan.x + trashCan.w / 2, y: trashCan.y + trashCan.h / 2 };
+  if (player.holdingItems.length > 0 && inRangeOfPoint(trashCenter.x, trashCenter.y)) candidates.push({ type: 'trash', d: dist(player.x, player.y, trashCenter.x, trashCenter.y) });
+
+  const orderTarget = customers.find(c => c.state === 'waitingToOrder' && inRangeOfPoint(c.spot.x, c.spot.y));
+  if (orderTarget) candidates.push({ type: 'order', target: orderTarget, d: dist(player.x, player.y, orderTarget.spot.x, orderTarget.spot.y) });
+
+  const deskCenter = { x: desk.x + desk.w / 2, y: desk.y - 6 };
+  if (inRangeOfPoint(deskCenter.x, deskCenter.y)) candidates.push({ type: 'pc', d: dist(player.x, player.y, deskCenter.x, deskCenter.y) });
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => a.d - b.d);
+  return candidates[0];
+}
+
+function handleInteract() {
+  if (state.phase === 'title') return;
+  const it = nearestInteractable();
+  if (!it) return;
+  if (it.type === 'serve') serveCustomer(it.target, it.heldIndex);
+  else if (it.type === 'bill') collectBill(it.target);
+  else if (it.type === 'stove') interactStove();
+  else if (it.type === 'prep') interactPrep();
+  else if (it.type === 'order') attemptTakeOrder(it.target);
+  else if (it.type === 'trash') interactTrash();
+  else if (it.type === 'pc') interactPC();
+}
+
+/* ============================== 8. UPDATE LOOP ============================== */
+function updateGameClock(dt) {
+  if (state.phase !== 'active' || state.paused) return;
+  state.minutes += dt / 1000 * 2; // 1 real second ~= 2 in-game minutes
+  if (state.minutes >= 22 * 60) endDay();
+}
+function endDay() {
+  state.phase = 'prep';
+  customers.forEach(c => freeSpotFor(c));
+  customers = [];
+  pendingOrders = [];
+  readyFood = [];
+  cooking = { active: false, progress: 0, duration: 0, order: null };
+  state.day += 1;
+  showToast(`🌙 Closing time! Day ${state.day} awaits whenever you're ready.`);
+  saveGame();
+}
+function startDay() {
+  if (state.phase !== 'prep') return;
+  state.phase = 'active';
+  state.minutes = 600;
+  spawnTimer = 5000;
+  showToast(`🔔 Day ${state.day} is open for business!`);
+}
+function updateCooking(dt) {
+  if (!cooking.active) return;
+  cooking.progress += dt;
+  if (cooking.progress >= cooking.duration) {
+    readyFood.push(cooking.order);
+    cooking = { active: false, progress: 0, duration: 0, order: null };
+    showToast('🔔 Order ready at the prep station!');
+  }
+}
+function update(dt) {
+  if (state.phase === 'title') { updateFloatingTexts(dt); return; }
+  updatePlayer(dt);
+  if (state.phase === 'active' && !state.paused) {
+    updateCustomers(dt);
+    updateCooking(dt);
+  }
+  updateGameClock(dt);
+  updateFloatingTexts(dt);
+}
+
+/* ============================== 9. RENDER / DRAW ============================== */
+let animTime = 0;
+
+function drawBackground() {
+  // --- Outdoor: layered grass base + texture patches + paved path ---
+  ctx.fillStyle = '#a8d8a0';
+  ctx.fillRect(0, 0, 392, 768);
+  for (const g of grassPatches) {
+    ctx.fillStyle = g.c;
+    ctx.beginPath(); ctx.ellipse(g.x, g.y, g.rx, g.ry, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.fillStyle = '#dcd3bd';
+  roundRect(ctx, pavedPath.x, pavedPath.y, pavedPath.w, pavedPath.h, 18); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  for (let x = 10; x < pavedPath.w; x += 34) {
+    ctx.beginPath(); ctx.moveTo(x, pavedPath.y + 6); ctx.lineTo(x, pavedPath.y + pavedPath.h - 6); ctx.stroke();
+  }
+
+  // --- Restaurant floor: wood walkway base + carpeted dining rug ---
+  ctx.fillStyle = '#e3c093';
+  ctx.fillRect(392, 0, 632, 768);
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  for (let x = 400; x < 1024; x += 30) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 768); ctx.stroke();
+  }
+  ctx.fillStyle = '#8c3a3a';
+  roundRect(ctx, carpetRug.x, carpetRug.y, carpetRug.w, carpetRug.h, 24); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  for (let x = carpetRug.x + 14; x < carpetRug.x + carpetRug.w; x += 26) {
+    for (let y = carpetRug.y + 14; y < carpetRug.y + carpetRug.h; y += 26) {
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.strokeStyle = '#6d2c2c'; ctx.lineWidth = 4;
+  roundRect(ctx, carpetRug.x, carpetRug.y, carpetRug.w, carpetRug.h, 24); ctx.stroke();
+
+  // --- Kitchen checkered floor ---
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(kitchenZone.x, kitchenZone.y, kitchenZone.w, kitchenZone.h);
+  ctx.clip();
+  const tile = 26;
+  for (let y = kitchenZone.y; y < kitchenZone.y + kitchenZone.h; y += tile) {
+    for (let x = kitchenZone.x; x < kitchenZone.x + kitchenZone.w; x += tile) {
+      const idx = Math.round((x - kitchenZone.x) / tile) + Math.round((y - kitchenZone.y) / tile);
+      ctx.fillStyle = idx % 2 === 0 ? '#e7e7ef' : '#c9c9d6';
+      ctx.fillRect(x, y, tile, tile);
+    }
+  }
+  ctx.restore();
+
+  // --- Office floor ---
+  ctx.fillStyle = '#d8c9a3';
+  ctx.fillRect(officeZone.x, officeZone.y, officeZone.w, officeZone.h);
+  ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+  for (let x = officeZone.x + 8; x < officeZone.x + officeZone.w; x += 24) {
+    ctx.beginPath(); ctx.moveTo(x, officeZone.y); ctx.lineTo(x, officeZone.y + officeZone.h); ctx.stroke();
+  }
+}
+
+function drawTrees() {
+  for (const t of trees) {
+    const sway = Math.sin(animTime * 0.9 + t.phase) * 0.06; // gentle animated sway
+    ctx.fillStyle = '#7a4b12';
+    ctx.fillRect(t.cx - 5, t.cy + 4, 10, 20);
+    ctx.save();
+    ctx.translate(t.cx, t.cy);
+    ctx.rotate(sway);
+    ctx.fillStyle = '#4caf50';
+    ctx.beginPath(); ctx.arc(0, 0, t.r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#66bb6a';
+    ctx.beginPath(); ctx.arc(-t.r * 0.3, -t.r * 0.3, t.r * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawFountain() {
+  ctx.fillStyle = '#c7c7cf';
+  ctx.beginPath(); ctx.arc(fountain.cx, fountain.cy, fountain.r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#9a9aa5'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(fountain.cx, fountain.cy, fountain.r, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#7fc7e8';
+  ctx.beginPath(); ctx.arc(fountain.cx, fountain.cy, fountain.r * 0.7, 0, Math.PI * 2); ctx.fill();
+  // animated ripple rings
+  for (let i = 0; i < 3; i++) {
+    const t = ((animTime * 0.5 + i / 3) % 1);
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - t)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(fountain.cx, fountain.cy, fountain.r * 0.15 + t * fountain.r * 0.55, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.fillStyle = '#5aa9cf';
+  ctx.beginPath(); ctx.arc(fountain.cx, fountain.cy, fountain.r * 0.22, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawLamps() {
+  for (const l of lamps) {
+    ctx.fillStyle = '#555';
+    ctx.fillRect(l.x - 3, l.y - 20, 6, 44);
+    const glow = ctx.createRadialGradient(l.x, l.y - 22, 2, l.x, l.y - 22, 22);
+    glow.addColorStop(0, 'rgba(255,244,190,0.85)');
+    glow.addColorStop(1, 'rgba(255,244,190,0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath(); ctx.arc(l.x, l.y - 22, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#fff4be';
+    ctx.beginPath(); ctx.arc(l.x, l.y - 22, 7, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawBenchShape(b) {
+  ctx.fillStyle = '#a1662f';
+  roundRect(ctx, b.x, b.y, b.w, b.h, 8); ctx.fill();
+  ctx.fillStyle = '#7a4b12';
+  ctx.fillRect(b.x + 4, b.y + b.h - 6, b.w - 8, 6);
+}
+
+function drawPottedPlant(p) {
+  ctx.fillStyle = '#b5651d';
+  roundRect(ctx, p.x - 10, p.y - 4, 20, 14, 3); ctx.fill();
+  ctx.fillStyle = '#3f9142';
+  ctx.beginPath(); ctx.arc(p.x, p.y - 12, 12, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#57b25c';
+  ctx.beginPath(); ctx.arc(p.x - 5, p.y - 18, 7, 0, Math.PI * 2); ctx.fill();
+}
+
+function drawRestaurantSign() {
+  const sign = { x: 118, y: 24, w: 160, h: 42 };
+  ctx.fillStyle = '#7a4b12';
+  roundRect(ctx, sign.x, sign.y, sign.w, sign.h, 10); ctx.fill();
+  ctx.fillStyle = '#fff3d6';
+  roundRect(ctx, sign.x + 6, sign.y + 6, sign.w - 12, sign.h - 12, 6); ctx.fill();
+  const name = state.restaurantName || 'My Restaurant';
+  ctx.save();
+  ctx.font = 'bold 14px Trebuchet MS';
+  let displayName = name;
+  while (ctx.measureText(displayName).width > sign.w - 20 && displayName.length > 3) {
+    displayName = displayName.slice(0, -1);
+  }
+  if (displayName !== name) displayName = displayName.slice(0, -1) + '…';
+  ctx.restore();
+  strokeFillText(displayName, sign.x + sign.w / 2, sign.y + sign.h / 2 + 5, '#4a2c0b', 'bold 14px Trebuchet MS', 'center', 0);
+  ctx.fillStyle = '#5c3a10';
+  ctx.fillRect(sign.x + 14, sign.y + sign.h, 8, 22);
+  ctx.fillRect(sign.x + sign.w - 22, sign.y + sign.h, 8, 22);
+}
+
+function drawOutdoorDecor() {
+  drawFountain();
+  drawLamps();
+  outdoorBenches.forEach(drawBenchShape);
+  outdoorPlants.forEach(drawPottedPlant);
+  drawTrees();
+  drawRestaurantSign();
+}
+
+function drawWalls() {
+  ctx.fillStyle = '#7a4b12';
+  for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h);
+  // doorway arch hint (outdoor <-> restaurant)
+  ctx.fillStyle = '#4a2c0b';
+  ctx.fillRect(375, 292, 40, 8);
+  ctx.fillRect(375, 470, 40, 8);
+  // kitchen archway hint
+  ctx.fillStyle = '#5c3a10';
+  ctx.fillRect(796, 502, 8, 22);
+  ctx.fillRect(896, 502, 8, 22);
+  // office doorway hint
+  ctx.fillStyle = '#5c3a10';
+  ctx.fillRect(492, 494, 70, 8);
+}
+
+function drawCounter() {
+  ctx.fillStyle = '#d97706';
+  roundRect(ctx, counter.x, counter.y, counter.w, counter.h, 12); ctx.fill();
+  ctx.strokeStyle = '#7a4b12'; ctx.lineWidth = 3;
+  roundRect(ctx, counter.x, counter.y, counter.w, counter.h, 12); ctx.stroke();
+  strokeFillText('ORDER HERE', counter.x + counter.w / 2, counter.y + counter.h / 2 + 5, '#fff3d6', 'bold 14px Trebuchet MS', 'center', 3);
+  for (const s of queueSpots) {
+    ctx.fillStyle = s.occupied ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.arc(s.x, s.y, 10, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+function drawPaintings() {
+  for (const p of paintings) {
+    ctx.fillStyle = '#4a2c0b';
+    ctx.fillRect(p.x - 3, p.y - 3, p.w + 6, p.h + 6);
+    ctx.fillStyle = p.c;
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+    ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+    ctx.strokeRect(p.x + 4, p.y + 4, p.w - 8, p.h - 8);
+  }
+}
+
+function drawTables() {
+  for (const t of tables) {
+    for (const chair of t.chairs) {
+      ctx.fillStyle = '#8b5e34';
+      roundRect(ctx, chair.x - 12, chair.y - 12, 24, 24, 6); ctx.fill();
+    }
+    ctx.fillStyle = '#c99a5b';
+    ctx.strokeStyle = '#7a4b12'; ctx.lineWidth = 3;
+    if (t.shape === 'round') {
+      ctx.beginPath(); ctx.arc(t.cx, t.cy, t.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.beginPath(); ctx.arc(t.cx, t.cy, t.r * 0.6, 0, Math.PI * 2); ctx.fill();
+    } else {
+      roundRect(ctx, t.rect.x, t.rect.y, t.rect.w, t.rect.h, 8); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      roundRect(ctx, t.rect.x + 8, t.rect.y + 8, t.rect.w - 16, t.rect.h - 16, 4); ctx.fill();
+    }
+  }
+}
+
+function drawIndoorPlants() { indoorPlants.forEach(drawPottedPlant); }
+
+function drawKitchen() {
+  // --- Stove: metallic body with a grill-top and glowing burners while cooking ---
+  const stoveGrad = ctx.createLinearGradient(stove.x, stove.y, stove.x, stove.y + stove.h);
+  stoveGrad.addColorStop(0, '#5c5c5c');
+  stoveGrad.addColorStop(1, '#2f2f2f');
+  ctx.fillStyle = stoveGrad;
+  roundRect(ctx, stove.x, stove.y, stove.w, stove.h, 8); ctx.fill();
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 2;
+  roundRect(ctx, stove.x, stove.y, stove.w, stove.h, 8); ctx.stroke();
+
+  // Recessed grill-top surface
+  const grillPad = 8;
+  ctx.fillStyle = '#202020';
+  roundRect(ctx, stove.x + grillPad, stove.y + grillPad, stove.w - grillPad * 2, stove.h - grillPad * 2, 5); ctx.fill();
+
+  // Warm glow radiating from the grill while something is actively cooking
+  if (cooking.active) {
+    const flicker = 0.75 + Math.sin(animTime * 12) * 0.15;
+    const glow = ctx.createRadialGradient(
+      stove.x + stove.w / 2, stove.y + stove.h / 2, 4,
+      stove.x + stove.w / 2, stove.y + stove.h / 2, stove.w * 0.65
+    );
+    glow.addColorStop(0, `rgba(255,140,40,${0.7 * flicker})`);
+    glow.addColorStop(1, 'rgba(255,80,20,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(stove.x - 12, stove.y - 12, stove.w + 24, stove.h + 24);
+  }
+
+  // Four burners: metal ring + grate lines + heat coil (glows orange when active)
+  for (let i = 0; i < 2; i++) {
+    for (let j = 0; j < 2; j++) {
+      const bx = stove.x + 24 + i * 48, by = stove.y + 20 + j * 30;
+      ctx.fillStyle = '#141414';
+      ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#8a8a8a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(bx, by, 12, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = '#4a4a4a'; ctx.lineWidth = 1.5;
+      for (let g = -8; g <= 8; g += 4) {
+        ctx.beginPath(); ctx.moveTo(bx - 9, by + g); ctx.lineTo(bx + 9, by + g); ctx.stroke();
+      }
+      const heatColor = cooking.active
+        ? `rgba(255,${120 + Math.round(Math.sin(animTime * 12 + i + j) * 40)},40,0.95)`
+        : '#8a2f2f';
+      ctx.fillStyle = heatColor;
+      ctx.beginPath(); ctx.arc(bx, by, cooking.active ? 6.5 : 5, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  strokeFillText('STOVE', stove.x + stove.w / 2, stove.y - 8, '#fff', 'bold 12px Trebuchet MS', 'center', 3);
+
+  if (cooking.active) {
+    const pct = clamp(cooking.progress / cooking.duration, 0, 1);
+    ctx.fillStyle = '#222';
+    roundRect(ctx, stove.x, stove.y - 26, stove.w, 11, 5); ctx.fill();
+    ctx.fillStyle = pctColor(pct);
+    roundRect(ctx, stove.x, stove.y - 26, stove.w * pct, 11, 5); ctx.fill();
+  } else if (pendingOrders.length > 0) {
+    ctx.fillStyle = '#e63946';
+    ctx.beginPath(); ctx.arc(stove.x + stove.w - 8, stove.y - 8, 11, 0, Math.PI * 2); ctx.fill();
+    strokeFillText(String(pendingOrders.length), stove.x + stove.w - 8, stove.y - 4, '#fff', 'bold 13px Trebuchet MS', 'center', 2);
+  }
+
+  ctx.fillStyle = '#4a7fa6';
+  roundRect(ctx, prepStation.x, prepStation.y, prepStation.w, prepStation.h, 8); ctx.fill();
+  strokeFillText('PREP', prepStation.x + prepStation.w / 2, prepStation.y - 8, '#dff1ff', 'bold 12px Trebuchet MS', 'center', 3);
+  ctx.font = '22px sans-serif'; ctx.textAlign = 'center';
+  readyFood.slice(0, 3).forEach((f, i) => {
+    ctx.fillText(FOOD_ICONS[f.item], prepStation.x + 22 + i * 26, prepStation.y + prepStation.h / 2 + 8);
+  });
+
+  // Trash can
+  ctx.fillStyle = '#666';
+  ctx.fillRect(trashCan.x - 3, trashCan.y - 6, trashCan.w + 6, 7);
+  ctx.fillStyle = '#4d4d4d';
+  roundRect(ctx, trashCan.x, trashCan.y, trashCan.w, trashCan.h, 5); ctx.fill();
+  ctx.strokeStyle = '#2c2c2c'; ctx.lineWidth = 2;
+  roundRect(ctx, trashCan.x, trashCan.y, trashCan.w, trashCan.h, 5); ctx.stroke();
+  ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+  ctx.fillText('🗑️', trashCan.x + trashCan.w / 2, trashCan.y + trashCan.h / 2 + 6);
+}
+
+function drawOffice() {
+  strokeFillText("MANAGER'S OFFICE", officeZone.x + officeZone.w / 2, officeZone.y + 18, '#7a4b12', 'bold 13px Trebuchet MS', 'center', 3);
+
+  // Cozy rug under the desk
+  ctx.fillStyle = '#7a3b3b';
+  roundRect(ctx, officeRug.x, officeRug.y, officeRug.w, officeRug.h, 16); ctx.fill();
+  ctx.strokeStyle = '#5c2b2b'; ctx.lineWidth = 3;
+  roundRect(ctx, officeRug.x, officeRug.y, officeRug.w, officeRug.h, 16); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.lineWidth = 2;
+  roundRect(ctx, officeRug.x + 10, officeRug.y + 10, officeRug.w - 20, officeRug.h - 20, 10); ctx.stroke();
+
+  // Filing cabinet against the left wall
+  ctx.fillStyle = '#5c5f66';
+  roundRect(ctx, officeCabinet.x, officeCabinet.y, officeCabinet.w, officeCabinet.h, 4); ctx.fill();
+  ctx.strokeStyle = '#33353a'; ctx.lineWidth = 2;
+  roundRect(ctx, officeCabinet.x, officeCabinet.y, officeCabinet.w, officeCabinet.h, 4); ctx.stroke();
+  for (let i = 0; i < 3; i++) {
+    const drawerY = officeCabinet.y + 6 + i * 18;
+    ctx.fillStyle = '#787c85';
+    ctx.fillRect(officeCabinet.x + 4, drawerY, officeCabinet.w - 8, 13);
+    ctx.fillStyle = '#33353a';
+    ctx.fillRect(officeCabinet.x + officeCabinet.w / 2 - 6, drawerY + 5, 12, 3);
+  }
+
+  // Corner plant, tucked well clear of the door and the walking path
+  drawPottedPlant(officePlant);
+
+  // Desk
+  ctx.fillStyle = '#6b4a2b';
+  roundRect(ctx, desk.x, desk.y, desk.w, desk.h, 6); ctx.fill();
+  ctx.strokeStyle = '#3d2a17'; ctx.lineWidth = 2;
+  roundRect(ctx, desk.x, desk.y, desk.w, desk.h, 6); ctx.stroke();
+  // Chair
+  ctx.fillStyle = '#8b5e34';
+  roundRect(ctx, desk.x + desk.w / 2 - 12, desk.y + desk.h + 6, 24, 24, 6); ctx.fill();
+  // Monitor
+  ctx.fillStyle = '#222';
+  roundRect(ctx, desk.x + desk.w / 2 - 20, desk.y - 26, 40, 28, 4); ctx.fill();
+  ctx.fillStyle = state.paused ? '#6fe38a' : '#3fa9f5';
+  roundRect(ctx, desk.x + desk.w / 2 - 16, desk.y - 22, 32, 20, 3); ctx.fill();
+  ctx.fillStyle = '#222';
+  ctx.fillRect(desk.x + desk.w / 2 - 4, desk.y + 2, 8, 8);
+  strokeFillText('PC', desk.x + desk.w / 2, desk.y - 44, '#fff3d6', 'bold 12px Trebuchet MS', 'center', 3);
+}
+
+function drawCharacterBody(x, y, size, bodyColor, faceDir, squash) {
+  const r = (size / 2) * (squash ? squash.s : 1);
+  const rY = (size / 2) * (squash ? squash.t : 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath(); ctx.ellipse(x, y + size * 0.42, size * 0.42, size * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(squash ? squash.s : 1, squash ? squash.t : 1);
+  ctx.fillStyle = bodyColor;
+  ctx.beginPath(); ctx.arc(0, 0, size / 2, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 2; ctx.stroke();
+  let ex = 0, ey = -2;
+  if (faceDir === 'left') ex = -4; else if (faceDir === 'right') ex = 4;
+  else if (faceDir === 'up') ey = -6; else ey = 2;
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.arc(-5 + ex * 0.3, ey, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(5 + ex * 0.3, ey, 2.4, 0, Math.PI * 2); ctx.fill();
+  ctx.restore();
+}
+
+function drawPlayer() {
+  // squash & stretch tied to the walk-bob phase, plus a short "pulse" on interact
+  const walkSquash = 1 + Math.sin(player.walkPhase) * 0.05;
+  const bouncePulse = 1 + player.bounce * 0.18;
+  const squash = { s: (1 / walkSquash) * bouncePulse, t: walkSquash * bouncePulse };
+  const bobOffset = Math.sin(player.walkPhase) * 2;
+
+  drawCharacterBody(player.x, player.y + bobOffset, player.size, '#ffb84d', player.facing, squash);
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, player.x - 8, player.y + 2 + bobOffset, 16, 12, 3); ctx.fill();
+  ctx.fillStyle = '#e63946';
+  ctx.fillRect(player.x - 3, player.y + 4 + bobOffset, 6, 3);
+  ctx.fillStyle = '#fff';
+  roundRect(ctx, player.x - 9, player.y - player.size / 2 - 10 + bobOffset, 18, 10, 4); ctx.fill();
+
+  if (player.holdingItems.length > 0) {
+    ctx.font = '18px sans-serif'; ctx.textAlign = 'center';
+    player.holdingItems.forEach((h, i) => {
+      const ox = (i - (player.holdingItems.length - 1) / 2) * 20;
+      ctx.fillText(FOOD_ICONS[h.item], player.x + ox, player.y - player.size / 2 - 18 + bobOffset);
+    });
+  }
+}
+
+function drawPatienceBar(c) {
+  const w = 36, h = 6;
+  const x = c.x - w / 2, y = c.y - 36;
+  const pct = clamp(c.patience / c.patienceMax, 0, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  roundRect(ctx, x, y, w, h, 3); ctx.fill();
+  ctx.fillStyle = pctColor(pct);
+  roundRect(ctx, x, y, w * pct, h, 3); ctx.fill();
+}
+
+function drawCustomers() {
+  for (const c of customers) {
+    const bob = Math.sin(c.bobPhase) * 1.6;
+    const squash = { s: 1 + Math.sin(c.bobPhase) * 0.03, t: 1 - Math.sin(c.bobPhase) * 0.03 };
+    drawCharacterBody(c.x, c.y + bob, 27, c.color, 'down', squash);
+
+    if (c.state === 'waitingToOrder' || c.state === 'waitingForFood' || c.state === 'waitingForBill') {
+      drawPatienceBar(c);
+    }
+    ctx.font = '17px sans-serif'; ctx.textAlign = 'center';
+    if (c.state === 'waitingToOrder') {
+      ctx.fillStyle = '#fff';
+      roundRect(ctx, c.x - 17, c.y - 60, 34, 23, 7); ctx.fill();
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5;
+      roundRect(ctx, c.x - 17, c.y - 60, 34, 23, 7); ctx.stroke();
+      ctx.fillText(FOOD_ICONS[c.item], c.x, c.y - 43);
+    } else if (c.state === 'waitingForFood') {
+      ctx.fillText('⏳', c.x, c.y - 42);
+    } else if (c.state === 'eating') {
+      ctx.fillText('😋', c.x, c.y - 42);
+    } else if (c.state === 'waitingForBill') {
+      ctx.fillText('🧾', c.x, c.y - 42);
+    }
+  }
+}
+
+function drawInteractPrompt() {
+  const target = nearestInteractable();
+  if (!target) return;
+  const labelMap = { serve: 'E: Serve', bill: 'E: Collect Bill', stove: 'E: Cook', prep: 'E: Pick up', order: 'E: Take order', trash: 'E: Discard food', pc: 'E: Open PC' };
+  const label = labelMap[target.type] || 'E';
+  const promptY = player.y - player.size / 2 - 44;
+  ctx.font = 'bold 13px Trebuchet MS';
+  const textW = ctx.measureText(label).width;
+  const boxW = Math.max(104, textW + 30);
+  roundRect(ctx, player.x - boxW / 2, promptY - 14, boxW, 20, 8);
+  ctx.fillStyle = 'rgba(0,0,0,0.68)'; ctx.fill();
+  strokeFillText(label, player.x, promptY, '#ffe08a', 'bold 13px Trebuchet MS', 'center', 0);
+}
+
+function drawPrepOverlay() {
+  if (state.phase !== 'prep') return;
+  ctx.fillStyle = 'rgba(20,15,35,0.28)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  strokeFillText('🌅 Preparation Phase', CANVAS_W / 2, 46, '#ffe9b8', 'bold 26px Trebuchet MS', 'center', 5);
+  strokeFillText('Manage the office, then hit "Start Day" when ready!', CANVAS_W / 2, 76, '#fff', 'bold 15px Trebuchet MS', 'center', 3);
+}
+
+function draw() {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  drawBackground();
+  drawOutdoorDecor();
+  drawKitchen();
+  drawOffice();
+  drawTables();
+  drawIndoorPlants();
+  drawCounter();
+  drawPaintings();
+  drawWalls();
+  drawCustomers();
+  drawPlayer();
+  drawInteractPrompt();
+  drawFloatingTexts();
+  drawPrepOverlay();
+
+  if (state.paused) {
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  }
+}
+
+/* ============================== 10. FLOATING TEXT ("JUICE") SYSTEM ============================== */
+let floatingTexts = [];
+function spawnFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color, life: 1100, maxLife: 1100 });
+}
+function updateFloatingTexts(dt) {
+  for (let i = floatingTexts.length - 1; i >= 0; i--) {
+    const f = floatingTexts[i];
+    f.y -= dt * 0.045;
+    f.life -= dt;
+    if (f.life <= 0) floatingTexts.splice(i, 1);
+  }
+}
+function drawFloatingTexts() {
+  for (const f of floatingTexts) {
+    const alpha = clamp(f.life / f.maxLife, 0, 1);
+    ctx.globalAlpha = alpha;
+    strokeFillText(f.text, f.x, f.y, f.color, 'bold 15px Trebuchet MS', 'center', 3);
+    ctx.globalAlpha = 1;
+  }
+}
+
+/* ============================== 11. UI: HUD / MODALS / TOASTS ============================== */
+function formatTime(minutesTotal) {
+  let h = Math.floor(minutesTotal / 60) % 24;
+  const m = Math.floor(minutesTotal % 60);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  let h12 = h % 12; if (h12 === 0) h12 = 12;
+  return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+const startDayBtnEl = document.getElementById('startDayBtn');
+const phaseBadgeEl = document.getElementById('phaseBadge');
+const nameDisplayEl = document.getElementById('nameDisplay');
+function refreshHUD() {
+  document.getElementById('moneyStat').textContent = state.money;
+  document.getElementById('dayStat').textContent = state.day;
+  document.getElementById('timeStat').textContent = formatTime(state.minutes);
+  document.getElementById('repStat').textContent = state.reputation;
+  nameDisplayEl.textContent = state.restaurantName || 'My Restaurant';
+  startDayBtnEl.style.display = state.phase === 'prep' ? 'inline-block' : 'none';
+  if (state.phase === 'title') phaseBadgeEl.textContent = 'Naming your restaurant...';
+  else if (state.phase === 'prep') phaseBadgeEl.textContent = state.paused ? '🖥️ Managing (Paused)' : '🌅 Preparation Phase';
+  else phaseBadgeEl.textContent = state.paused ? '🖥️ Managing (Paused)' : '🍽️ Open for Business';
+}
+function pulseStat(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('pulse');
+  void el.offsetWidth; // restart animation
+  el.classList.add('pulse');
+}
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 2600);
+}
+
+/* --- Title screen --- */
+const titleScreen = document.getElementById('titleScreen');
+const restaurantNameInput = document.getElementById('restaurantNameInput');
+document.getElementById('startGameBtn').onclick = () => {
+  const val = restaurantNameInput.value.trim();
+  state.restaurantName = val || 'My Restaurant';
+  state.phase = 'prep';
+  titleScreen.classList.remove('show');
+  refreshHUD();
+  saveGame();
+};
+
+/* --- Generic modal open/close (PC hub, prices, shop) --- */
+const pcModal = document.getElementById('pcModal');
+const menuModal = document.getElementById('menuModal');
+const shopModal = document.getElementById('shopModal');
+function openModal(modalEl) { modalEl.classList.add('show'); state.paused = true; }
+function closeModal(modalEl) { modalEl.classList.remove('show'); }
+function closeAllModalsAndResume() {
+  [pcModal, menuModal, shopModal].forEach(m => m.classList.remove('show'));
+  state.paused = false;
+}
+
+document.getElementById('hubPricesBtn').onclick = () => { closeModal(pcModal); renderPriceRows(); openModal(menuModal); };
+document.getElementById('hubShopBtn').onclick = () => { closeModal(pcModal); renderShop(); openModal(shopModal); };
+document.getElementById('hubResumeBtn').onclick = () => closeAllModalsAndResume();
+document.getElementById('closeMenuBtn').onclick = () => { closeModal(menuModal); openModal(pcModal); };
+document.getElementById('closeShopBtn').onclick = () => { closeModal(shopModal); openModal(pcModal); };
+
+startDayBtnEl.onclick = () => startDay();
+
+/* --- Price menu contents --- */
+const priceRowsEl = document.getElementById('priceRows');
+function renderPriceRows() {
+  priceRowsEl.innerHTML = '';
+  Object.keys(prices).forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'priceRow';
+    row.innerHTML = `
+      <div class="foodName">${FOOD_ICONS[item]} ${item}</div>
+      <div class="priceControls">
+        <button data-item="${item}" data-delta="-1">−</button>
+        <div class="priceValue">$${prices[item]}</div>
+        <button data-item="${item}" data-delta="1">+</button>
+      </div>`;
+    priceRowsEl.appendChild(row);
+  });
+  priceRowsEl.querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      const item = btn.dataset.item;
+      const delta = parseInt(btn.dataset.delta, 10);
+      prices[item] = clamp(prices[item] + delta, 1, 30);
+      renderPriceRows();
+      saveGame();
+    };
+  });
+}
+
+/* --- Upgrade shop contents --- */
+const shopItemsEl = document.getElementById('shopItems');
+function renderShop() {
+  document.getElementById('shopMoney').textContent = state.money;
+  shopItemsEl.innerHTML = '';
+  UPGRADE_ORDER.forEach(key => {
+    const up = upgrades[key];
+    const row = document.createElement('div');
+    row.className = 'shopItem';
+    const canAfford = state.money >= up.cost && !up.owned;
+    row.innerHTML = `
+      <div class="info">
+        <div class="name">${up.name} ${up.owned ? '✅' : `($${up.cost})`}</div>
+        <div class="desc">${up.desc}</div>
+      </div>
+      <button ${up.owned || !canAfford ? 'disabled' : ''} data-key="${key}">${up.owned ? 'Owned' : 'Buy'}</button>`;
+    shopItemsEl.appendChild(row);
+  });
+  shopItemsEl.querySelectorAll('button').forEach(btn => {
+    btn.onclick = () => {
+      const up = upgrades[btn.dataset.key];
+      if (!up.owned && state.money >= up.cost) {
+        state.money -= up.cost;
+        up.owned = true;
+        if (btn.dataset.key === 'goldenApron') state.reputation = 50;
+        applyUpgradeEffects();
+        showToast(`✨ Purchased ${up.name}!`);
+        pulseStat('moneyBox');
+        refreshHUD(); renderShop(); saveGame();
+      }
+    };
+  });
+}
+
+/* ============================== 12. INPUT & MAIN LOOP ============================== */
+const keys = {};
+window.addEventListener('keydown', (e) => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+    if (e.key === 'Enter') document.getElementById('startGameBtn').click();
+    return;
+  }
+  const k = e.key.toLowerCase();
+  if (['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' '].includes(k)) e.preventDefault();
+  keys[k] = true;
+  if (k === 'e' || k === ' ') handleInteract();
+});
+window.addEventListener('keyup', (e) => {
+  if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+  keys[e.key.toLowerCase()] = false;
+});
+
+/* --- Boot sequence --- */
+const hadSave = loadSave();
+if (hadSave) {
+  state.phase = 'prep';
+  titleScreen.classList.remove('show');
+} else {
+  state.phase = 'title';
+  titleScreen.classList.add('show');
+}
+applyUpgradeEffects();
+refreshHUD();
+
+let lastTime = performance.now();
+function loop(now) {
+  const dt = Math.min(50, now - lastTime); // clamp dt to avoid huge jumps on tab-switch
+  lastTime = now;
+  animTime += dt / 1000;
+  update(dt);
+  draw();
+  refreshHUD();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+window.addEventListener('beforeunload', saveGame);
+</script>
+</body>
+</html>
